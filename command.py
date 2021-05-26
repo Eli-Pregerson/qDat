@@ -572,7 +572,6 @@ class Command:
     def do_metrics(self, flags: Options, name: str) -> None:
         """
         Compute all of the complexity matrics for a Graph object.
-
         Usage:
         metrics <name>
         metrics *
@@ -581,7 +580,13 @@ class Command:
         # pylint: disable=R0912
         graphs = [self.data.graphs[name] for name in self.get_metrics_list(name)]
         for graph in graphs:
+            self.logger.v_msg(f"Computing metrics for {graph.name}")
             results = []
+            if self.rich:
+                table = Table(title=f"Metrics for {graph.name}")
+                table.add_column("Metric", style="cyan")
+                table.add_column("Result", style="magenta", no_wrap=False)
+                table.add_column("Time Elapsed", style="green")
             for metric_generator in self.controller.metrics_generators:
                 # Lines of Code is currently only supported in Python.
                 if metric_generator.name() == "Lines of Code" and \
@@ -599,6 +604,8 @@ class Command:
                         if metric_generator.name() == "Path Complexity":
                             result_ = cast(tuple[Union[float, str], Union[float, str]],
                                            result)
+                            path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
+
                             if self.rich:
                                 table.add_row(metric_generator.name(), path_out, time_out)
                             else:
@@ -624,6 +631,7 @@ class Command:
 
             if graph.name is not None:
                 self.data.metrics[graph.name] = results
+
 
     def do_vector(self, flags: Options) -> None:
         for graphkey in list(self.data.graphs.keys()):
