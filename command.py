@@ -456,8 +456,17 @@ class Command:
                     if graph == {}:
                         self.logger.v_msg("Converted without errors, but no graphs created.")
                     else:
-                        self.logger.v_msg(f"Created graph objects {' '.join(list(graph.keys()))}")
-                        self.data.graphs.update(graph)
+                        graphdict = {}
+                        for key in list(graph.keys()):
+                            splitkey = key.split("/")
+                            if len(splitkey) == 1:
+                                methodName = splitkey[0]
+                            else:
+                                methodName = splitkey[-1].split("_")[-3]
+                            newKey = filepath[10:].replace("/", ".") + ":" + methodName
+                            graphdict[newKey] = graph[key]
+                        self.logger.v_msg(f"Created graph objects {' '.join(list(graphdict.keys()))}")
+                        self.data.graphs.update(graphdict)
                 elif isinstance(graph, ControlFlowGraph):
                     self.logger.v_msg(f"Created graph {graph.name}")
                     self.data.graphs[filepath] = graph
