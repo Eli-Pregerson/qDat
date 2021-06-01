@@ -9,12 +9,14 @@ import readline
 import subprocess
 import tempfile
 import time
+import csv
 from enum import Enum
 from functools import partial
 from multiprocessing import Manager, Pool
 from os import listdir
 from pathlib import Path
 from typing import Iterable, Optional, Union, cast
+
 
 import numpy  # type: ignore
 from rich.console import Console
@@ -463,7 +465,7 @@ class Command:
                                 methodName = splitkey[0]
                             else:
                                 methodName = splitkey[-1].split("_")[-3]
-                            newKey = filepath[10:].replace("/", ".") + ":" + methodName
+                            newKey = filepath.replace("/", ".") + ":" + methodName
                             graphdict[newKey] = graph[key]
                         self.logger.v_msg(f"Created graph objects {' '.join(list(graphdict.keys()))}")
                         self.data.graphs.update(graphdict)
@@ -643,6 +645,8 @@ class Command:
 
 
     def do_vector(self, flags: Options) -> None:
+        """creates a feature vector for each existing graph, and saves that vector to the file tests/textFiles/test.txt"""
+        metricDict = {}
         for graphkey in list(self.data.graphs.keys()):
             graph = self.data.graphs[graphkey]
             results = []
@@ -688,9 +692,10 @@ class Command:
                                     apclist = [coeff, base, 0, 0]
                             else: #something has gone wrong
                                 apclist = "Split APC is not of an expected length"
-
-                            f = open("tests/textFiles/test.txt", "a")
-                            apclist = [graphkey] + apclist
+                            
+                            metricDict[graphkey] = apclist
+                            f = open("tests/textFiles/test.txt", "a")   
+                            apclist = [graphkey] + apclist                       
                             f.write(str(apclist) + "\n")
                             f.close()
                             path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
@@ -704,8 +709,25 @@ class Command:
                 except numpy.linalg.LinAlgError as err:
                     self.logger.e_msg("Lin Alg Error")
                     self.logger.e_msg(str(err))
-
-
+        newFile = open('tests/textFiles/updatedCodeMetrics.csv', 'w', newline = '')
+        with newFile: 
+            with open('tests/textFiles/signature_codeMetrics_1.csv') as csv_file:
+                newCsvData = []
+                csv_reader = csv.reader(csv_file, delimiter=',')
+                write = csv.writer(newFile)
+                firstLine = True
+                for row in csv_reader:
+                    if firstLine:
+                        featureVectorLabel = ["APC exp coeff", "APX exp base", "APC poly coeff", "APC poly power"]
+                        newCsvData += row+featureVectorLabel
+                        write.writerow(newCsvData)
+                        firstLine = False
+                    else:
+                        key = "tests.javaFiles" + row[1][20:]
+                        if key in metricDict.keys():
+                            featureVector = metricDict[key]
+                            newRow = row + featureVector 
+                            write.writerow(newRow)
 
     def log_name(self, name: str) -> bool:
         """Log all objects of a given name."""
