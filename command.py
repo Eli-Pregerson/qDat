@@ -692,10 +692,10 @@ class Command:
                                     apclist = [coeff, base, 0, 0]
                             else: #something has gone wrong
                                 apclist = "Split APC is not of an expected length"
-
+                            
                             metricDict[graphkey] = apclist
-                            f = open("tests/textFiles/test.txt", "a")
-                            apclist = [graphkey] + apclist
+                            f = open("tests/textFiles/test.txt", "a")   
+                            apclist = [graphkey] + apclist                       
                             f.write(str(apclist) + "\n")
                             f.close()
                             path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
@@ -710,7 +710,7 @@ class Command:
                     self.logger.e_msg("Lin Alg Error")
                     self.logger.e_msg(str(err))
         newFile = open('tests/textFiles/updatedCodeMetrics.csv', 'w', newline = '')
-        with newFile:
+        with newFile: 
             with open('tests/textFiles/signature_codeMetrics_1.csv') as csv_file:
                 newCsvData = []
                 csv_reader = csv.reader(csv_file, delimiter=',')
@@ -726,10 +726,8 @@ class Command:
                         key = "tests.javaFiles" + row[1][20:]
                         if key in metricDict.keys():
                             featureVector = metricDict[key]
-                        else:
-                            featureVector = [-1, -1, -1, -1]
-                        newRow = row + featureVector
-                        write.writerow(newRow)
+                            newRow = row + featureVector 
+                            write.writerow(newRow)
 
     def log_name(self, name: str) -> bool:
         """Log all objects of a given name."""
