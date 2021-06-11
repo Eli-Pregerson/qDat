@@ -1,2 +1,2 @@
 # qDat
-Temporary repository for transferring and copying files iii
+Temporary repository for transferring and copying files
