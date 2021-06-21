@@ -1,7 +1,7 @@
 # Author: Aditya Bhargava (abhargava@g.hmc.edu)
 # Date: Summer 2021
 # Organization: HMC ALPQAQ REU
-# Takes in an already merged file with source code, process metrics, and Metrinome metrics
+# Takes in an already merged file with source code, process metrics, and Metrinome metrics and returns them in a combined file called 'AllMetrics10Fold.csv
 import csv
 base_path = '/Users/adityabhargava/Desktop/ALPAQA/'
 clean_by = 0
