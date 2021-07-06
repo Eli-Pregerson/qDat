@@ -4,30 +4,34 @@ from __future__ import annotations
 
 import copy
 import os.path
+import random
 import re
 import readline
 import subprocess
 import tempfile
 import time
 import csv
+from collections import defaultdict
 from enum import Enum
 from functools import partial
-from multiprocessing import Manager, Pool
-from os import listdir
+from multiprocessing import Manager, Pool, Lock
+from os import getpid, listdir  # pylint: disable=unused-import
 from pathlib import Path
+from queue import Queue
 from typing import Iterable, Optional, Union, cast
-
+from pandas import read_csv
 
 import numpy  # type: ignore
 from rich.console import Console
 from rich.table import Table
 
-from core.command_data import AnyDict, Data, ObjTypes, PathComplexityRes
+from core.command_data import AnyDict, Data, MetricRes, ObjTypes, PathComplexityRes
 from core.env import KnownExtensions
 from core.error_messages import (EXTENSION, MISSING_FILENAME, MISSING_NAME, MISSING_TYPE_AND_NAME,
                                  NO_FILE_EXT, ReplErrors)
 from core.log import Colors, Log, LogLevel
 from experiments.data_collection import DataCollector
+
 from graph.control_flow_graph import ControlFlowGraph
 from inlining import inlining_script, inlining_script_heuristic
 from klee.klee_utils import KleeUtils
@@ -86,7 +90,7 @@ class Controller:
         return self.graph_generators[file_extension]
 
 
-def worker_main(shared_dict: dict[str, ControlFlowGraph], file: str) -> None:
+def multiprocess_import(shared_dict: dict[str, ControlFlowGraph], file: str) -> None:
     """Handle the multiprocessing of import."""
     graph = ControlFlowGraph.from_file(file)
     if isinstance(graph, dict):
@@ -95,25 +99,45 @@ def worker_main(shared_dict: dict[str, ControlFlowGraph], file: str) -> None:
         filepath, _ = os.path.splitext(file)
         shared_dict[filepath] = graph
 
+def multiprocess_metrics(
+    metrics_generators: dict[str, metric.MetricAbstract],
+    shared_dict: dict[tuple[str, str], Union[int, PathComplexityRes]],
+    queue: Queue[ControlFlowGraph],
+    lock: Lock,
+    process_count: int) -> None:
+    """Handle the multiprocessing of metrics."""
+    print(f"Starting {process_count}")
+    while True:
+        with lock:
+            if not queue.empty():
+                graph, generator_name = queue.get()
+            else:
+                break
+        metrics_generator = metrics_generators[generator_name]
+        timeout = 1200 if metrics_generator.name() == "Path Complexity" else 180
+        try:
+            if metrics_generator.name() == "Lines of Code" and \
+            graph.metadata.language is not KnownExtensions.Python:
+                continue
 
-def worker_main_two(metrics_generator: metric.MetricAbstract,
-                    shared_dict: dict[tuple[str, str], Union[int, PathComplexityRes]],
-                    graph: ControlFlowGraph) -> None:
-    """Handle the multiprocessing of convert."""
-    try:
-        with Timeout(10, "Took too long!"):
-            result = metrics_generator.evaluate(graph)
+            if "$" in graph.name:
+                continue
 
-        if graph.name is None:
-            raise ValueError("No Graph name.")
+            # print(f"Getting {metrics_generator.name()} for graph {graph.name} on process {os.getpid()}.")
+            with Timeout(timeout, "Took too long!"):
+                result = metrics_generator.evaluate(graph)
 
-        shared_dict[(graph.name, metrics_generator.name())] = result
-    except IndexError as err:
-        print(graph)
-        print(err)
-    except TimeoutError as err:
-        print(err, graph.name, metrics_generator.name())
+            if graph.name is None:
+                raise ValueError("No Graph name.")
 
+            shared_dict[(graph.name, metrics_generator.name())] = result
+        except IndexError as err:
+            print(graph)
+            print(err)
+        except TimeoutError as err:
+            print(err, graph.name, metrics_generator.name())
+            shared_dict[(graph.name, metrics_generator.name())] = ("NA", "Timeout")
+    print(f"Queue {process_count} is done.")
 
 class REPLOptions():
     """Contains options for the REPL such as debug mode."""
@@ -403,15 +427,15 @@ class Command:
     def do_convert(self, args: str) -> None:  # pylint: disable=too-many-branches
         """
         Convert a file containing source code to a Graph object.
-
         The recursive flag (-r) can also be used.
-
         Usage:
         convert <file-like>
         convert -r <file-like>
         convert <file-like-1> <file-like-2> ... <file-like-n>
         """
         # Iterate through all file-like objects.
+        # prints out the arguments such as -r experiments/Jmol/version2/classes
+        print(args)
         arguments = args.split(" ")
         args_list, recursive_mode, inline_type, graph_stitching = self.parse_convert_args(arguments)
         if len(args_list) == 0:
@@ -429,7 +453,7 @@ class Command:
 
         self.logger.d_msg(f"Convert files {all_files}")
         # Make sure files are valid (if using recursive mode
-        #  this is done automatically in the previous step).
+        # this is done automatically in the previous step).
 
         for file in all_files:
             file = str(file)  # used for typechecking.
@@ -454,21 +478,18 @@ class Command:
             else:
                 self.logger.i_msg("Converted successfully")
                 self.logger.d_msg(str(graph))
+                # checks if a graph is a dictionary 
                 if isinstance(graph, dict):
                     if graph == {}:
                         self.logger.v_msg("Converted without errors, but no graphs created.")
                     else:
-                        graphdict = {}
-                        for key in list(graph.keys()):
-                            splitkey = key.split("/")
-                            if len(splitkey) == 1:
-                                methodName = splitkey[0]
-                            else:
-                                methodName = splitkey[-1].split("_")[-3]
-                            newKey = filepath.replace("/", ".") + ":" + methodName
-                            graphdict[newKey] = graph[key]
-                        self.logger.v_msg(f"Created graph objects {' '.join(list(graphdict.keys()))}")
-                        self.data.graphs.update(graphdict)
+                        self.logger.v_msg(f"Created graph objects {Colors.MAGENTA.value}"
+                                          f"{' '.join(list(graph.keys()))}{Colors.ENDC.value}")
+                        # the update metod takes a dictionary (graph) and updates the dictionary with elements
+                        # from a dictionary object. It doesn't return any value. self.data.graphs is a dictionary which has the method name
+                        # as a key and value as the graph object 
+                        self.data.graphs.update(graph)
+                # checks if a graph is a ControlFlowGraph
                 elif isinstance(graph, ControlFlowGraph):
                     self.logger.v_msg(f"Created graph {graph.name}")
                     self.data.graphs[filepath] = graph
@@ -477,6 +498,7 @@ class Command:
                     main.name  = os.path.basename(filepath) + "-full"
                     self.logger.v_msg(f"Created stitched graph {main.name}")
                     self.data.graphs[main.name] = main
+                    
 
     def do_import(self, flags: Options, *args_list: str) -> None:
         """
@@ -506,17 +528,20 @@ class Command:
             manager = Manager()
             shared_dict: dict[str, ControlFlowGraph] = manager.dict()
             pool = Pool(8)
-            pool.map(partial(worker_main, shared_dict), all_files)
+            pool.map(partial(multiprocess_import, shared_dict), all_files)
+            self.logger.v_msg(f"Created graph objects "
+                              f"{Colors.MAGENTA.value}{' '.join(shared_dict.keys())}{Colors.ENDC.value}")
             self.data.graphs.update(shared_dict)
         else:
+            graphs = []
             for file in all_files:
                 filepath, _ = os.path.splitext(file)
                 graph = ControlFlowGraph.from_file(file)
-                self.logger.v_msg(str(graph))
-                if isinstance(graph, dict):
-                    self.data.graphs.update(graph)
-                else:
-                    self.data.graphs[filepath] = graph
+                graphs.append(graph)
+                self.data.graphs[filepath] = graph
+            names = [graph.name for graph in graphs]
+            self.logger.v_msg(f"Created graph objects "
+                              f"{Colors.MAGENTA.value}{' '.join(names)}{Colors.ENDC.value}")
 
     def do_list(self, flags: Options, list_typename: str) -> None:
         """
@@ -550,14 +575,124 @@ class Command:
         else:
             self.logger.v_msg(f"Type {list_type} not recognized")
 
-    def do_metrics_multithreaded(self, graphs: list[ControlFlowGraph]) -> None:
+    def do_metrics(self, flags: Options, name: str) -> None:
+        """
+        Compute all of the complexity matrics for a Graph object.
+        Usage:
+        metrics <name>
+        metrics *
+        """
+        # pylint: disable=R1702
+        # pylint: disable=R0912
+        graphs = [self.data.graphs[name] for name in self.get_metrics_list(name)]
+        print(f"graphs: {graphs}")
+        if self.multi_threaded:
+            start_time = time.time()
+            self.do_metrics_multithreaded(graphs)
+            elapsed = time.time() - start_time
+            print(f"TIME ELAPSED: {elapsed}")
+        else:
+            for graph in graphs:
+                self.logger.v_msg(f"Computing metrics for {graph.name}")
+                results = []
+                if self.rich:
+                    table = Table(title=f"Metrics for {graph.name}")
+                    table.add_column("Metric", style="cyan")
+                    table.add_column("Result", style="magenta", no_wrap=False)
+                    table.add_column("Time Elapsed", style="green")
+                for metric_generator in self.controller.metrics_generators:
+                    # Lines of Code is currently only supported in Python.
+                    if metric_generator.name() == "Lines of Code" and \
+                       graph.metadata.language is not KnownExtensions.Python:
+                        continue
+                    start_time = time.time()
+
+                    try:
+                        with Timeout(6000, "Took too long!"):
+                            result = metric_generator.evaluate(graph)
+                            runtime = time.time() - start_time
+                        if result is not None:
+                            results.append((metric_generator.name(), result))
+                            time_out = f"{runtime:.5f} seconds"
+                            if metric_generator.name() == "Path Complexity":
+                                result_ = cast(tuple[Union[float, str], Union[float, str]],
+                                               result)
+                                path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
+
+                                if self.rich:
+                                    table.add_row(metric_generator.name(), path_out, time_out)
+                                else:
+                                    self.logger.v_msg(f"Got {path_out}, {time_out}")
+                            else:
+                                if self.rich:
+                                    table.add_row(metric_generator.name(), str(result), time_out)
+                                else:
+                                    self.logger.v_msg(f" Got {result}, took {runtime:.3e} seconds")
+                        else:
+                            self.logger.v_msg("Got None")
+                    except TimeoutError:
+                        self.logger.e_msg("Timeout!")
+                    except IndexError as err:
+                        self.logger.e_msg("Index Error")
+                        self.logger.e_msg(str(err))
+                    except numpy.linalg.LinAlgError as err:
+                        self.logger.e_msg("Lin Alg Error")
+                        self.logger.e_msg(str(err))
+                if self.rich:
+                    console = Console()
+                    console.print(table)
+                if graph.name is not None:
+                    self.data.metrics[graph.name] = results
+        print(self.data.metrics)
+
+    def do_metrics_multithreaded(self, cfgs: list[ControlFlowGraph]) -> None:
         """Compute all of the metrics for some set of graphs using parallelization."""
-        pool = Pool(8)
+        pool_size = 8
+        pool = Pool(pool_size)
         manager = Manager()
+        graphQueue = manager.Queue()
+        lock = manager.Lock()
+        v_num = self.data.v_num
+        methods = read_csv(f"experiments/Jmol/metricsFlagsDefects_jmol{self.data.v_num}.csv")
+        listOfMethods = list(methods.Method)
+        for temp in range(0,len(listOfMethods)):
+            strMethod = str(methods.Method[temp])
+            strMethod = strMethod.replace(" ",":")
+            indexOfParen = strMethod.index("(")
+            methods.Method[temp]= strMethod[0:indexOfParen]
+        cfgs = sorted(cfgs, key=lambda cfg: len(cfg.graph.vertices()), reverse=True)
+        results: defaultdict[str, list[tuple[str, MetricRes]]] = defaultdict(list)
         shared_dict: dict[tuple[str, str], Union[int, PathComplexityRes]] = manager.dict()
-        for metrics_generator in self.controller.metrics_generators:
-            pool.map(partial(worker_main_two, metrics_generator, shared_dict), graphs)
-            self.logger.v_msg(str(shared_dict))
+        async_results = []
+        # Queue up all of the cfgs / metrics to execute
+        for metrics_generator in self.controller.metrics_generators[::-1]:
+            for cfg in cfgs:
+                if cfg.name in list(methods.Method):
+                    graphQueue.put((cfg, metrics_generator.name()))
+
+        generator_dict = {generator.name(): generator for generator in self.controller.metrics_generators}
+    
+        func_to_execute = partial(
+            multiprocess_metrics,
+            generator_dict,
+            shared_dict,
+            graphQueue,
+            lock)
+        args = list(range(pool_size))
+        
+        res = pool.map(func_to_execute, args, chunksize=1)
+        
+
+        # while not res.ready():
+        #     print(f"=== Queue Size: {graphQueue.qsize()} ===")
+        #     time.sleep(3)
+            
+        # async_res = pool.map_async(partial(multiprocess_metrics, metrics_generator, shared_dict), graphQueue)
+        # async_results.append(async_res)
+        # list(map(lambda x: x.wait(), async_results))
+        for (name, metric_generator), res in shared_dict.items():
+            results[name].append((metric_generator, res))
+        self.data.metrics.update(results)
 
     def get_metrics_list(self, name: str) -> list[str]:
         """Get the list of metric names from command argument."""
@@ -580,154 +715,92 @@ class Command:
             self.logger.v_msg(f"Error, Graph {name} not found.")
             return []
 
-    def do_metrics(self, flags: Options, name: str) -> None:
-        """
-        Compute all of the complexity matrics for a Graph object.
-        Usage:
-        metrics <name>
-        metrics *
-        """
-        # pylint: disable=R1702
-        # pylint: disable=R0912
-        graphs = [self.data.graphs[name] for name in self.get_metrics_list(name)]
-        for graph in graphs:
-            self.logger.v_msg(f"Computing metrics for {graph.name}")
-            results = []
-            if self.rich:
-                table = Table(title=f"Metrics for {graph.name}")
-                table.add_column("Metric", style="cyan")
-                table.add_column("Result", style="magenta", no_wrap=False)
-                table.add_column("Time Elapsed", style="green")
-            for metric_generator in self.controller.metrics_generators:
-                # Lines of Code is currently only supported in Python.
-                if metric_generator.name() == "Lines of Code" and \
-                   graph.metadata.language is not KnownExtensions.Python:
-                    continue
-                start_time = time.time()
 
-                try:
-                    with Timeout(6000, "Took too long!"):
-                        result = metric_generator.evaluate(graph)
-                        runtime = time.time() - start_time
-                    if result is not None:
-                        results.append((metric_generator.name(), result))
-                        time_out = f"{runtime:.5f} seconds"
-                        if metric_generator.name() == "Path Complexity":
-                            result_ = cast(tuple[Union[float, str], Union[float, str]],
-                                           result)
-                            path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
-
-                            if self.rich:
-                                table.add_row(metric_generator.name(), path_out, time_out)
-                            else:
-                                self.logger.v_msg(f"Got {path_out}, {time_out}")
-                        else:
-                            if self.rich:
-                                table.add_row(metric_generator.name(), str(result), time_out)
-                            else:
-                                self.logger.v_msg(f" Got {result}, took {runtime:.3e} seconds")
-                    else:
-                        self.logger.v_msg("Got None")
-                except TimeoutError:
-                    self.logger.e_msg("Timeout!")
-                except IndexError as err:
-                    self.logger.e_msg("Index Error")
-                    self.logger.e_msg(str(err))
-                except numpy.linalg.LinAlgError as err:
-                    self.logger.e_msg("Lin Alg Error")
-                    self.logger.e_msg(str(err))
-            if self.rich:
-                console = Console()
-                console.print(table)
-
-            if graph.name is not None:
-                self.data.metrics[graph.name] = results
 
 
     def do_vector(self, flags: Options) -> None:
         """creates a feature vector for each existing graph, and saves that vector to the file tests/textFiles/test.txt"""
+        methods = read_csv(f"experiments/Jmol/metricsFlagsDefects_jmol{self.data.v_num}.csv")
         metricDict = {}
-        for graphkey in list(self.data.graphs.keys()):
-            graph = self.data.graphs[graphkey]
-            results = []
-            for metric_generator in self.controller.metrics_generators:
-                start_time = time.time()
-                if metric_generator.name() == "Lines of Code" and \
-                   graph.metadata.language is not KnownExtensions.Python:
-                    continue
-                try:
-                    with Timeout(6000, "Took too long!"):
-                        result = metric_generator.evaluate(graph)
-                        runtime = time.time() - start_time
-                    if result is not None:
-                        results.append((metric_generator.name(), result))
-                        time_out = f"{runtime:.5f} seconds"
-                        if metric_generator.name() == "Path Complexity":
-                            result_ = cast(tuple[Union[float, str], Union[float, str]],
-                                           result)
-                            apclist = str(result_[0]).split("*")
-                            pc = result_[1]
-                            # if len(pc) <= 2: # constant or linear
-                            if len(apclist) == 1: #constant or linear
-                                if apclist[0] == "n": #linear
-                                    for entry in pc.split():
-                                        count = 0
-                                        for char in entry:
-                                            if char == "*":
-                                                count += 1
-                                        if count == 1: #found the linear term in the PC
-                                            apclist = [0, 0, float(entry.split("*")[0]), 1]
-                                else: #constant
-                                    apclist = [0, 0, float(apclist[0]), 0]
-                            elif len(apclist) == 3: #exponential or polynomial
-                                pcSplit = pc.replace(" ", "*").split("*")
-                                for i in range(len(pcSplit) - 2):
-                                    if pcSplit[i:i+3] == apclist:
-                                        coeff = pcSplit[i - 1]
-                                if apclist[0] == "n": #polynomial
-                                    power = float(apclist[2])
-                                    apclist = [0, 0, coeff, power]
-                                else: #exponential
-                                    base = float(apclist[0])
-                                    apclist = [coeff, base, 0, 0]
-                            else: #something has gone wrong
-                                apclist = "Split APC is not of an expected length"
-                            
-                            metricDict[graphkey] = apclist
-                            f = open("tests/textFiles/test.txt", "a")   
-                            apclist = [graphkey] + apclist                       
-                            f.write(str(apclist) + "\n")
-                            f.close()
-                            path_out = f"(APC: {result_[0]}, Path Complexity: {result_[1]})"
-                    else:
-                        self.logger.v_msg("Got None")
-                except TimeoutError:
-                    self.logger.e_msg("Timeout!")
-                except IndexError as err:
-                    self.logger.e_msg("Index Error")
-                    self.logger.e_msg(str(err))
-                except numpy.linalg.LinAlgError as err:
-                    self.logger.e_msg("Lin Alg Error")
-                    self.logger.e_msg(str(err))
-        newFile = open('tests/textFiles/updatedCodeMetrics.csv', 'w', newline = '')
+        for method in methods.Method:
+            # Making the method names from the CSV file match the graph object name
+            strMethod = str(method)
+            strMethod = strMethod.replace(" ",":")
+            indexOfParen = strMethod.index("(")
+            method = strMethod[0:indexOfParen]
+
+            # self.data have metrics, graphs, klee_stats, klee_formatted_files, bc_file, logger attributes 
+            # self.data.metrics is a dictionary where the key is a method and the value is a list of lists where the entries
+            # are npath, cyclomatic, path complexity, and APC
+            if method not in self.data.metrics.keys():
+                metricDict[method] = [-1,-1,-1,-1, -1]
+                continue
+            
+            metric = self.data.metrics[method]
+            metric = sorted(metric, key=lambda val: val[0], reverse=True)
+            # metric becomes a list of strings where the first element is APC and the second element is PC
+            metric = metric[0][1]
+            apclist = str(metric[0]).split("*")
+            pc = metric[1]
+            if len(apclist) == 1: #constant or linear
+                if apclist[0] == "n": #linear
+                    for entry in pc.split():
+                        count = 0
+                        for char in entry:
+                            if char == "*":
+                                count += 1
+                        if count == 1: #found the linear term in the PC
+                            apclist = [1,0, 0, 0, float(entry.split("*")[0])]
+                else: #constant
+                    try:
+                        apclist = [0, 0, 0, float(apclist[0]), 0]
+                    except: # Took too long to run
+                        apclist = [-1, -1, -1, -1, -1]
+            elif len(apclist) == 3: #exponential or polynomial
+                pcSplit = pc.replace(" ", "*").split("*")
+                for i in range(len(pcSplit) - 2):
+                    if pcSplit[i:i+3] == apclist:
+                        coeff = pcSplit[i - 1]
+                if apclist[0] == "n": #polynomial
+                    power = float(apclist[2])
+                    apclist = [2, 0, 0, coeff, power]
+                else: #exponential
+                    base = float(apclist[0])
+                    apclist = [3, coeff, base, 0, 0]
+            else: #something has gone wrong
+                self.logger.e_msg(apclist := "Split APC is not of an expected length")
+            metricDict[method] = apclist
+
+           
+        newFile = open(f"experiments/Jmol/metrics_{self.data.v_num}.csv", 'w', newline = '')
         with newFile: 
-            with open('tests/textFiles/signature_codeMetrics_1.csv') as csv_file:
+            with open(f"experiments/Jmol/metricsFlagsDefects_jmol{self.data.v_num}.csv") as csv_file:
                 newCsvData = []
                 csv_reader = csv.reader(csv_file, delimiter=',')
                 write = csv.writer(newFile)
                 firstLine = True
+                # iterates the csv row by row
                 for row in csv_reader:
                     if firstLine:
-                        featureVectorLabel = ["APC exp coeff", "APX exp base", "APC poly coeff", "APC poly power"]
+                        featureVectorLabel = ["APC type", "APC exp coeff", "APX exp base", "APC poly coeff", "APC poly power"]
                         newCsvData += row+featureVectorLabel
                         write.writerow(newCsvData)
                         firstLine = False
                     else:
-                        key = "tests.javaFiles" + row[1][20:]
-                        if key in metricDict.keys():
+                        # key is the method name given by the CSV (might have to change depending on project and CSV)
+                        key = row[2]
+
+                        # Making the key compabitible with self.data.metrics.keys() [graph object name]
+                        strKey = str(key)
+                        strKey = strKey.replace(" ",":")
+                        indexOfParen = strKey.index("(")
+                        key = strKey[0:indexOfParen]
+                        if key in self.data.metrics.keys():
                             featureVector = metricDict[key]
-                            newRow = row + featureVector 
-                            write.writerow(newRow)
+                        else:
+                            featureVector = [-1, -1, -1, -1, -1]
+                        newRow = row + featureVector 
+                        write.writerow(newRow)
 
     def log_name(self, name: str) -> bool:
         """Log all objects of a given name."""
