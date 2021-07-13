@@ -1,7 +1,5 @@
 """The main implementation of the REPL."""
-
 from __future__ import annotations
-
 import copy
 import os.path
 import random
@@ -41,7 +39,6 @@ from utils import Timeout
 
 # Temporarily disable unused arguments due to flags.
 # pylint: disable=unused-argument
-
 
 class InlineType(Enum):
     """Possible ways to work with inline functions in convert."""
@@ -119,10 +116,6 @@ def multiprocess_metrics(
             if metrics_generator.name() == "Lines of Code" and \
             graph.metadata.language is not KnownExtensions.Python:
                 continue
-
-            if "$" in graph.name:
-                continue
-
             # print(f"Getting {metrics_generator.name()} for graph {graph.name} on process {os.getpid()}.")
             with Timeout(timeout, "Took too long!"):
                 result = metrics_generator.evaluate(graph)
@@ -585,7 +578,6 @@ class Command:
         # pylint: disable=R1702
         # pylint: disable=R0912
         graphs = [self.data.graphs[name] for name in self.get_metrics_list(name)]
-        print(f"graphs: {graphs}")
         if self.multi_threaded:
             start_time = time.time()
             self.do_metrics_multithreaded(graphs)
@@ -643,7 +635,6 @@ class Command:
                     console.print(table)
                 if graph.name is not None:
                     self.data.metrics[graph.name] = results
-        print(self.data.metrics)
 
     def do_metrics_multithreaded(self, cfgs: list[ControlFlowGraph]) -> None:
         """Compute all of the metrics for some set of graphs using parallelization."""
@@ -653,13 +644,14 @@ class Command:
         graphQueue = manager.Queue()
         lock = manager.Lock()
         v_num = self.data.v_num
+        methodList = []
         methods = read_csv(f"experiments/Jmol/metricsFlagsDefects_jmol{self.data.v_num}.csv")
-        listOfMethods = list(methods.Method)
-        for temp in range(0,len(listOfMethods)):
-            strMethod = str(methods.Method[temp])
-            strMethod = strMethod.replace(" ",":")
-            indexOfParen = strMethod.index("(")
-            methods.Method[temp]= strMethod[0:indexOfParen]
+        with open ('experiments/Jmol/metrics_2CSVMethodNames.csv', 'w', newline = '') as methodCSVNameFile:
+            methodCSVNameWriter = csv.writer(methodCSVNameFile)
+            for method in methods.Method:
+                method = self.method_cleaner(method, False)
+                methodList.append(method)
+                methodCSVNameWriter.writerow([method])
         cfgs = sorted(cfgs, key=lambda cfg: len(cfg.graph.vertices()), reverse=True)
         results: defaultdict[str, list[tuple[str, MetricRes]]] = defaultdict(list)
         shared_dict: dict[tuple[str, str], Union[int, PathComplexityRes]] = manager.dict()
@@ -667,9 +659,9 @@ class Command:
         # Queue up all of the cfgs / metrics to execute
         for metrics_generator in self.controller.metrics_generators[::-1]:
             for cfg in cfgs:
-                if cfg.name in list(methods.Method):
+                # IMPORTANT! 
+                if cfg.name in methodList:
                     graphQueue.put((cfg, metrics_generator.name()))
-
         generator_dict = {generator.name(): generator for generator in self.controller.metrics_generators}
     
         func_to_execute = partial(
@@ -692,6 +684,9 @@ class Command:
         # list(map(lambda x: x.wait(), async_results))
         for (name, metric_generator), res in shared_dict.items():
             results[name].append((metric_generator, res))
+        # self.data.metrics is a dictionary where the key is a method and the value is a list of lists where the entries
+        # are npath, cyclomatic, path complexity, and APC
+        #print(f"results:{results}")
         self.data.metrics.update(results)
 
     def get_metrics_list(self, name: str) -> list[str]:
@@ -714,28 +709,49 @@ class Command:
         except re.error:
             self.logger.v_msg(f"Error, Graph {name} not found.")
             return []
-
-
-
+    
+    def method_cleaner(self, method: str, printStatus: bool):
+        """Making the method names from the CSV file match the graph object name"""
+        strMethod = str(method)
+        if printStatus:
+            print(f"Uncleaned Method: {strMethod}")
+        strMethod = strMethod.replace(" ",":")
+        indexOfParen = strMethod.index("(")
+        method = strMethod[0:indexOfParen]
+        if "<init>" in method:
+            endingIndex = method.find("<init>")-1
+            if ".jmol." in method:
+                if ".applet." in method:
+                    if printStatus:
+                        print("yahhurd")
+                    startingIndex = method.find(".applet.")+8
+                else:
+                    startingIndex = method.find("jmol.")+5 
+            elif "freeware." in method:
+                startingIndex = 9
+            else:
+                startingIndex = 12
+            constructorName = method[startingIndex:endingIndex]
+            if printStatus:
+                print(f"Constructor Name: {constructorName}")
+            method = method.replace("<init>",constructorName) 
+        if printStatus:
+            print(f"Cleaned Method: {method}")
+        return method
 
     def do_vector(self, flags: Options) -> None:
         """creates a feature vector for each existing graph, and saves that vector to the file tests/textFiles/test.txt"""
         methods = read_csv(f"experiments/Jmol/metricsFlagsDefects_jmol{self.data.v_num}.csv")
+        # metricDict is a dictionary that stores 
         metricDict = {}
         for method in methods.Method:
-            # Making the method names from the CSV file match the graph object name
-            strMethod = str(method)
-            strMethod = strMethod.replace(" ",":")
-            indexOfParen = strMethod.index("(")
-            method = strMethod[0:indexOfParen]
-
+            method = self.method_cleaner(method, False)
             # self.data have metrics, graphs, klee_stats, klee_formatted_files, bc_file, logger attributes 
             # self.data.metrics is a dictionary where the key is a method and the value is a list of lists where the entries
             # are npath, cyclomatic, path complexity, and APC
             if method not in self.data.metrics.keys():
-                metricDict[method] = [-1,-1,-1,-1, -1]
+                metricDict[method] = [-1,-1,-1,-1, -1, "csv method does not match Metrinome object 1"]
                 continue
-            
             metric = self.data.metrics[method]
             metric = sorted(metric, key=lambda val: val[0], reverse=True)
             # metric becomes a list of strings where the first element is APC and the second element is PC
@@ -755,7 +771,7 @@ class Command:
                     try:
                         apclist = [0, 0, 0, float(apclist[0]), 0]
                     except: # Took too long to run
-                        apclist = [-1, -1, -1, -1, -1]
+                        apclist = [-1, -1, -1, -1, -1, "took too long to run"]
             elif len(apclist) == 3: #exponential or polynomial
                 pcSplit = pc.replace(" ", "*").split("*")
                 for i in range(len(pcSplit) - 2):
@@ -789,16 +805,11 @@ class Command:
                     else:
                         # key is the method name given by the CSV (might have to change depending on project and CSV)
                         key = row[2]
-
-                        # Making the key compabitible with self.data.metrics.keys() [graph object name]
-                        strKey = str(key)
-                        strKey = strKey.replace(" ",":")
-                        indexOfParen = strKey.index("(")
-                        key = strKey[0:indexOfParen]
+                        key = self.method_cleaner(key, True)
                         if key in self.data.metrics.keys():
                             featureVector = metricDict[key]
                         else:
-                            featureVector = [-1, -1, -1, -1, -1]
+                            featureVector = [-1, -1, -1, -1, -1, "csv method does not match Metrinome object 2"]
                         newRow = row + featureVector 
                         write.writerow(newRow)
 
