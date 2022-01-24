@@ -44,11 +44,10 @@ public class EvaluateModels {
     private static String output10Fold = "project-name,classifier,model-name,TP,FP,FN,TN,accuracy,precision,recall,f-measure,auc-roc,mcc\n";
     private static String projectName = "";
 
-    private static String basePath = "/home/elip/eclipse-workspace/";
+    private static String basePath = "/Users/adityabhargava/desktop/ALPAQA/";
     private static Integer cleanedBy = 0;
 
     public static void main(String[] args) {
-
         HashMap<String, Classifier> classifiers = new HashMap<String, Classifier>();
         /// classifiers.put("SimpleLogistic", new SimpleLogistic());
         /// classifiers.put("MultilayerPerceptron", new MultilayerPerceptron());
@@ -67,42 +66,42 @@ public class EvaluateModels {
             for (String project : projects) {
                 System.out.println("Working on project " + project);
 
-                 // Input file
-                 String project10Fold = basePath + "output/" + project + "/AllMetrics10Fold.csv";
-                
-                 System.out.println("Evaluating 10Fold for " + project10Fold);
-                 // Load Training and Test set from CSV file
-                 Instances instances10Fold = EvaluateModels.readFile(project10Fold);
-                
-                 Instances productModel = EvaluateModels.selectProductFeaturesOnly(instances10Fold);
-                 Instances productProcessModel = EvaluateModels.selectProductProcessFeaturesOnly(instances10Fold);
-                 Instances productProcessTextualModel = EvaluateModels.selectProductProcessTextualFeaturesOnly(instances10Fold);
-                 Instances productProcessTextualSmellModel = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(instances10Fold);
-                 Instances productProcessTextualSmellDeveloperRelatedModel = EvaluateModels.selectAllFeatures(instances10Fold);
-                
-                // Instances onlyStructuralModel = EvaluateModels.selectStructuralFeaturesOnly(instances10Fold);
-                // Instances onlyChangeModel = EvaluateModels.selectChangeFeaturesOnly(instances10Fold);
-                // Instances onlyCommentModel = EvaluateModels.selectCommentFeaturesOnly(instances10Fold);
-                // Instances structuralAndChangeModel = EvaluateModels.selectStructuralAndChangeFeaturesOnly(instances10Fold);
-                // Instances structuralAndComment = EvaluateModels.selectStructuralAndCommentFeaturesOnly(instances10Fold);
-                // Instances changeAndComment = EvaluateModels.selectChangeAndCommentFeaturesOnly(instances10Fold);
-                // Instances allModel = EvaluateModels.selectAllFeatures(instances10Fold);
-                
-                 for (Entry<String, Classifier> entry : classifiers.entrySet()) {
-                 EvaluateModels.evaluateModel10Fold(entry.getValue(), productModel, "productModel", entry.getKey());
-                 EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessModel, "productProcessModel", entry.getKey());
-                 EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualModel, "productProcessTextualModel", entry.getKey());
-                 EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualSmellModel, "productProcessTextualSmellModel", entry.getKey());
-                 EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualSmellDeveloperRelatedModel, "allModel", entry.getKey());
-                
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyStructuralModel, "structuralModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyChangeModel, "changeModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyCommentModel, "commentModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), structuralAndChangeModel, "structuralAndChangeModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), structuralAndComment, "structuralAndCommentModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), changeAndComment, "changeAndCommentModel", entry.getKey());
-                // EvaluateModels.evaluateModel10Fold(entry.getValue(), allModel, "allModel", entry.getKey());
-                 }
+                // // Input file
+                // String project10Fold = basePath + "output/" + project + "/AllMetrics10Fold.csv";
+                //
+                // System.out.println("Evaluating 10Fold for " + project10Fold);
+                // // Load Training and Test set from CSV file
+                // Instances instances10Fold = EvaluateModels.readFile(project10Fold);
+                //
+                // Instances productModel = EvaluateModels.selectProductFeaturesOnly(instances10Fold);
+                // Instances productProcessModel = EvaluateModels.selectProductProcessFeaturesOnly(instances10Fold);
+                // Instances productProcessTextualModel = EvaluateModels.selectProductProcessTextualFeaturesOnly(instances10Fold);
+                // Instances productProcessTextualSmellModel = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(instances10Fold);
+                // Instances productProcessTextualSmellDeveloperRelatedModel = EvaluateModels.selectAllFeatures(instances10Fold);
+                //
+                //// Instances onlyStructuralModel = EvaluateModels.selectStructuralFeaturesOnly(instances10Fold);
+                //// Instances onlyChangeModel = EvaluateModels.selectChangeFeaturesOnly(instances10Fold);
+                //// Instances onlyCommentModel = EvaluateModels.selectCommentFeaturesOnly(instances10Fold);
+                //// Instances structuralAndChangeModel = EvaluateModels.selectStructuralAndChangeFeaturesOnly(instances10Fold);
+                //// Instances structuralAndComment = EvaluateModels.selectStructuralAndCommentFeaturesOnly(instances10Fold);
+                //// Instances changeAndComment = EvaluateModels.selectChangeAndCommentFeaturesOnly(instances10Fold);
+                //// Instances allModel = EvaluateModels.selectAllFeatures(instances10Fold);
+                //
+                // for (Entry<String, Classifier> entry : classifiers.entrySet()) {
+                // EvaluateModels.evaluateModel10Fold(entry.getValue(), productModel, "productModel", entry.getKey());
+                // EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessModel, "productProcessModel", entry.getKey());
+                // EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualModel, "productProcessTextualModel", entry.getKey());
+                // EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualSmellModel, "productProcessTextualSmellModel", entry.getKey());
+                // EvaluateModels.evaluateModel10Fold(entry.getValue(), productProcessTextualSmellDeveloperRelatedModel, "allModel", entry.getKey());
+                //
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyStructuralModel, "structuralModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyChangeModel, "changeModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), onlyCommentModel, "commentModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), structuralAndChangeModel, "structuralAndChangeModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), structuralAndComment, "structuralAndCommentModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), changeAndComment, "changeAndCommentModel", entry.getKey());
+                //// EvaluateModels.evaluateModel10Fold(entry.getValue(), allModel, "allModel", entry.getKey());
+                // }
 
                 System.out.println("Evaluating release-by-release for " + project);
                 Vector<String> releases = readReleases(basePath + "output/" + project + "_releases.csv");
@@ -115,29 +114,31 @@ public class EvaluateModels {
 
                     // Load Training and Test set from CSV file
                     Instances originTraining = EvaluateModels.readFile(trainingSet);
+                    System.out.println(trainingSet);
+                    System.out.println(testSet);
                     Instances originTest = EvaluateModels.readFile(testSet);
 
                     // EvaluateModels.projectName = trainingSet.substring(trainingSet.lastIndexOf("/") + 1, trainingSet.length());
                     EvaluateModels.projectName = project;
 
-//                    Instances productTraining = EvaluateModels.selectProductFeaturesOnly(originTraining);
-//                    Instances processTraining = EvaluateModels.selectProcessFeaturesOnly(originTraining);
-//                    Instances productProcessTraining = EvaluateModels.selectProductProcessFeaturesOnly(originTraining);
-//                    Instances textualTraining = EvaluateModels.selectTextualFeaturesOnly(originTraining);
-//                    Instances productProcessTextualTraining = EvaluateModels.selectProductProcessTextualFeaturesOnly(originTraining);
-//                    Instances smellTraining = EvaluateModels.selectSmellFeaturesOnly(originTraining);
-//                    Instances productProcessTextualSmellTraining = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(originTraining);
-//                    Instances devRelTraining = EvaluateModels.selectDevRelFeaturesOnly(originTraining);
+                    Instances productTraining = EvaluateModels.selectProductFeaturesOnly(originTraining);
+                    Instances processTraining = EvaluateModels.selectProcessFeaturesOnly(originTraining);
+                    Instances productProcessTraining = EvaluateModels.selectProductProcessFeaturesOnly(originTraining);
+                    Instances textualTraining = EvaluateModels.selectTextualFeaturesOnly(originTraining);
+                    Instances productProcessTextualTraining = EvaluateModels.selectProductProcessTextualFeaturesOnly(originTraining);
+                    Instances smellTraining = EvaluateModels.selectSmellFeaturesOnly(originTraining);
+                    Instances productProcessTextualSmellTraining = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(originTraining);
+                    Instances devRelTraining = EvaluateModels.selectDevRelFeaturesOnly(originTraining);
                     Instances allTraining = EvaluateModels.selectAllFeatures(originTraining);
 
-//                    Instances productTest = EvaluateModels.selectProductFeaturesOnly(originTest);
-//                    Instances processTest = EvaluateModels.selectProcessFeaturesOnly(originTest);
-//                    Instances productProcessTesting = EvaluateModels.selectProductProcessFeaturesOnly(originTest);
-//                    Instances textualTest = EvaluateModels.selectTextualFeaturesOnly(originTest);
-//                    Instances productProcessTextualTestign = EvaluateModels.selectProductProcessTextualFeaturesOnly(originTest);
-//                    Instances smellTest = EvaluateModels.selectSmellFeaturesOnly(originTest);
-//                    Instances productProcessTextualSmellTesting = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(originTest);
-//                    Instances devRelTest = EvaluateModels.selectDevRelFeaturesOnly(originTest);
+                    Instances productTest = EvaluateModels.selectProductFeaturesOnly(originTest);
+                    Instances processTest = EvaluateModels.selectProcessFeaturesOnly(originTest);
+                    Instances productProcessTesting = EvaluateModels.selectProductProcessFeaturesOnly(originTest);
+                    Instances textualTest = EvaluateModels.selectTextualFeaturesOnly(originTest);
+                    Instances productProcessTextualTestign = EvaluateModels.selectProductProcessTextualFeaturesOnly(originTest);
+                    Instances smellTest = EvaluateModels.selectSmellFeaturesOnly(originTest);
+                    Instances productProcessTextualSmellTesting = EvaluateModels.selectProductProcessTextualSmellFeaturesOnly(originTest);
+                    Instances devRelTest = EvaluateModels.selectDevRelFeaturesOnly(originTest);
                     Instances allTesting = EvaluateModels.selectAllFeatures(originTest);
 
                     // Instances onlyStructuralModelTraining = EvaluateModels.selectStructuralFeaturesOnly(originTraining);
@@ -157,14 +158,14 @@ public class EvaluateModels {
                     // Instances allModelTesting = EvaluateModels.selectAllFeatures(originTest);
 
                     for (Entry<String, Classifier> entry : classifiers.entrySet()) {
-//                        EvaluateModels.evaluateModel(entry.getValue(), productTraining, productTest, "productModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), processTraining, processTest, "processModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTraining, productProcessTesting, "productProcessModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), textualTraining, textualTest, "textualModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTextualTraining, productProcessTextualTestign, "productProcessTextualModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), smellTraining, smellTest, "smellModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTextualSmellTraining, productProcessTextualSmellTesting, "productProcessTextualSmellModel", entry.getKey());
-//                        EvaluateModels.evaluateModel(entry.getValue(), devRelTraining, devRelTest, "devRelModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), productTraining, productTest, "productModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), processTraining, processTest, "processModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTraining, productProcessTesting, "productProcessModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), textualTraining, textualTest, "textualModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTextualTraining, productProcessTextualTestign, "productProcessTextualModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), smellTraining, smellTest, "smellModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), productProcessTextualSmellTraining, productProcessTextualSmellTesting, "productProcessTextualSmellModel", entry.getKey());
+                        EvaluateModels.evaluateModel(entry.getValue(), devRelTraining, devRelTest, "devRelModel", entry.getKey());
                         EvaluateModels.evaluateModel(entry.getValue(), allTraining, allTesting, "allModel", entry.getKey());
 
                         // EvaluateModels.evaluateModel(entry.getValue(), onlyStructuralModelTraining, onlyStructuralModelTest, "structuralModel", entry.getKey());
